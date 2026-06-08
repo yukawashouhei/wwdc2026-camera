@@ -59,3 +59,22 @@ struct PhotoCompositorTests {
         #expect(mapped.y == 250)
     }
 }
+
+@Suite("WWDC26SlabMetrics")
+struct WWDC26SlabMetricsTests {
+    @Test("Maintains SVG viewBox aspect ratio")
+    func maintainsSVGAspectRatio() {
+        let expected = 506.0 / 728.0
+        #expect(abs(WWDC26SlabMetrics.aspectRatio - expected) < 0.0001)
+        #expect(abs(WWDC26SlabMetrics.defaultHeight - (220 / expected)) < 0.0001)
+    }
+
+    @Test("Slab body shape produces non-empty path")
+    func slabBodyShapeIsNonEmpty() {
+        let rect = CGRect(x: 0, y: 0, width: 220, height: WWDC26SlabMetrics.defaultHeight)
+        let path = WWDC26SlabBodyShape().path(in: rect)
+        #expect(!path.isEmpty)
+        #expect(path.boundingRect.width > 0)
+        #expect(path.boundingRect.height > 0)
+    }
+}

@@ -3,58 +3,80 @@ import SwiftUI
 struct WWDC26GlassOverlay: View {
     var scale: CGFloat = 1.0
 
-    private let slabWidth: CGFloat = 180
-    private let slabHeight: CGFloat = 320
-    private let cornerRadius: CGFloat = 48
+    private let slabWidth = WWDC26SlabMetrics.defaultWidth
+    private let slabHeight = WWDC26SlabMetrics.defaultHeight
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-
         ZStack {
-            shape
-                .fill(.clear)
-                .frame(width: slabWidth, height: slabHeight)
-                .glassEffect(.regular, in: shape)
-                .mask { glassMask(shape: shape) }
-
-            shape
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(0.85),
-                            .white.opacity(0.15),
-                            .white.opacity(0.45)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.5
-                )
-                .frame(width: slabWidth, height: slabHeight)
+            depthGlassLayer
+            mainGlassLayer
+            edgeHighlightLayer
+            topRimHighlight
         }
+        .frame(width: slabWidth, height: slabHeight)
         .scaleEffect(scale)
     }
 
-    private func glassMask(shape: RoundedRectangle) -> some View {
+    private var depthGlassLayer: some View {
+        Color.clear
+            .frame(width: slabWidth, height: slabHeight)
+            .glassEffect(.regular.tint(.white.opacity(0.12)), in: WWDC26SlabBodyShape())
+            .mask { glassBodyMask }
+            .offset(x: 1.5, y: 2.5)
+            .opacity(0.55)
+    }
+
+    private var mainGlassLayer: some View {
+        Color.clear
+            .frame(width: slabWidth, height: slabHeight)
+            .glassEffect(.clear, in: WWDC26SlabBodyShape())
+            .mask { glassBodyMask }
+    }
+
+    private var edgeHighlightLayer: some View {
+        WWDC26OutlineShape()
+            .stroke(
+                LinearGradient(
+                    colors: [
+                        .white.opacity(0.9),
+                        .white.opacity(0.2),
+                        .white.opacity(0.05),
+                        .white.opacity(0.35)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 2
+            )
+            .frame(width: slabWidth, height: slabHeight)
+    }
+
+    private var topRimHighlight: some View {
+        WWDC26OutlineShape()
+            .stroke(
+                LinearGradient(
+                    colors: [
+                        .white.opacity(0.6),
+                        .white.opacity(0.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .center
+                ),
+                lineWidth: 1
+            )
+            .frame(width: slabWidth, height: slabHeight)
+            .opacity(0.5)
+    }
+
+    private var glassBodyMask: some View {
         ZStack {
-            shape
+            WWDC26SlabBodyShape()
                 .fill(.white)
-                .frame(width: slabWidth, height: slabHeight)
-            cutoutText
+            WWDC26LetterCutoutShape()
+                .fill(.white)
                 .blendMode(.destinationOut)
         }
         .compositingGroup()
-    }
-
-    private var cutoutText: some View {
-        VStack(spacing: -4) {
-            Text("WW")
-            Text("DC")
-            Text("26")
-        }
-        .font(.system(size: 52, weight: .bold, design: .rounded))
-        .multilineTextAlignment(.center)
-        .frame(width: slabWidth, height: slabHeight)
     }
 }
 
