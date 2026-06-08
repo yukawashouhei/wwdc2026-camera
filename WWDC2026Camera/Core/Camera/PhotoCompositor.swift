@@ -5,6 +5,8 @@ struct OverlayTransform: Sendable, Equatable {
     var offset: CGSize
     var scale: CGFloat
     var previewSize: CGSize
+
+    nonisolated static let defaultVerticalOffset: CGFloat = -10
 }
 
 enum AspectFillMapper: Sendable {
@@ -81,11 +83,32 @@ enum PhotoCompositor {
             canvasSize: photoSize
         )
 
-        let renderer = ImageRenderer(content: content)
-        renderer.scale = 1
-        renderer.proposedSize = ProposedViewSize(photoSize)
+        return renderToImage(content, size: photoSize, scale: photo.scale)
+    }
 
-        return renderer.uiImage
+    static func renderToImage<V: View>(_ view: V, size: CGSize, scale: CGFloat) -> UIImage? {
+        let hostingController = UIHostingController(rootView: view)
+        hostingController.view.bounds = CGRect(origin: .zero, size: size)
+        hostingController.view.backgroundColor = .clear
+
+        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
+        window.rootViewController = hostingController
+        window.isHidden = false
+        window.layoutIfNeeded()
+        hostingController.view.setNeedsLayout()
+        hostingController.view.layoutIfNeeded()
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = max(scale, 1)
+        format.opaque = true
+
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        return renderer.image { _ in
+            hostingController.view.drawHierarchy(
+                in: hostingController.view.bounds,
+                afterScreenUpdates: true
+            )
+        }
     }
 }
 

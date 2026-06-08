@@ -3,7 +3,7 @@ import SwiftUI
 struct CaptureView: View {
     @Bindable var viewModel: CaptureViewModel
 
-    @State private var accumulatedOffset = CGSize.zero
+    @State private var accumulatedOffset = CGSize(width: 0, height: OverlayTransform.defaultVerticalOffset)
     @GestureState private var magnification: CGFloat = 1.0
 
     var body: some View {

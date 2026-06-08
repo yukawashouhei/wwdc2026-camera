@@ -78,3 +78,34 @@ struct WWDC26SlabMetricsTests {
         #expect(path.boundingRect.height > 0)
     }
 }
+
+@Suite("OverlayTransform")
+struct OverlayTransformTests {
+    @Test("Default vertical offset shifts preview center upward")
+    func defaultOffsetShiftsCenterUpward() {
+        let previewSize = CGSize(width: 390, height: 844)
+        let photoSize = CGSize(width: 390, height: 844)
+        let defaultCenter = CGPoint(
+            x: previewSize.width / 2,
+            y: previewSize.height / 2 + OverlayTransform.defaultVerticalOffset
+        )
+        let originCenter = CGPoint(
+            x: previewSize.width / 2,
+            y: previewSize.height / 2
+        )
+
+        let mappedDefault = AspectFillMapper.map(
+            point: defaultCenter,
+            from: previewSize,
+            to: photoSize
+        )
+        let mappedOrigin = AspectFillMapper.map(
+            point: originCenter,
+            from: previewSize,
+            to: photoSize
+        )
+
+        #expect(mappedDefault.y < mappedOrigin.y)
+        #expect(abs(mappedOrigin.y - mappedDefault.y - 10) < 0.001)
+    }
+}

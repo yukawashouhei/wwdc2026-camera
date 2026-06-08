@@ -1,10 +1,11 @@
 import Observation
+import OSLog
 import UIKit
 
 @MainActor
 @Observable
 final class CaptureViewModel {
-    var overlayOffset = CGSize.zero
+    var overlayOffset = CGSize(width: 0, height: OverlayTransform.defaultVerticalOffset)
     var overlayScale: CGFloat = 1.0
     var previewSize = CGSize.zero
     var isCapturing = false
@@ -15,6 +16,7 @@ final class CaptureViewModel {
 
     private let repository: any CaptureRepositoryProtocol
     private var magnificationBaseScale: CGFloat = 1.0
+    private let logger = Logger(subsystem: "com.wwdc2026.camera", category: "Capture")
 
     init(repository: any CaptureRepositoryProtocol, previewSource: PreviewSource) {
         self.repository = repository
@@ -25,6 +27,7 @@ final class CaptureViewModel {
         do {
             try await repository.startCamera()
         } catch {
+            logger.error("Camera start failed: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
         }
     }
@@ -61,7 +64,10 @@ final class CaptureViewModel {
 
         do {
             let data = try await repository.capturePhoto()
+            logger.info("Photo captured: \(data.count) bytes")
+
             guard let photo = PhotoCompositor.normalizedImage(from: data) else {
+                logger.error("Failed to normalize captured photo")
                 throw CaptureRepositoryError.compositionFailed
             }
 
@@ -72,16 +78,19 @@ final class CaptureViewModel {
             )
 
             guard let composited = PhotoCompositor.composite(photo: photo, transform: transform) else {
+                logger.error("Failed to composite overlay onto photo")
                 throw CaptureRepositoryError.compositionFailed
             }
 
             try await repository.saveToPhotoLibrary(composited)
+            logger.info("Photo saved to library")
             showSaveConfirmation = true
 
             try? await Task.sleep(for: .seconds(1.5))
             showSaveConfirmation = false
         } catch {
-            errorMessage = error.localizedDescription
+            logger.error("Capture flow failed: \(error.localizedDescription)")
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 }

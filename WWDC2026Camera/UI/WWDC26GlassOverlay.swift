@@ -8,6 +8,7 @@ struct WWDC26GlassOverlay: View {
 
     var body: some View {
         ZStack {
+            innerEdgeShadow
             depthGlassLayer
             mainGlassLayer
             edgeHighlightLayer
@@ -20,10 +21,10 @@ struct WWDC26GlassOverlay: View {
     private var depthGlassLayer: some View {
         Color.clear
             .frame(width: slabWidth, height: slabHeight)
-            .glassEffect(.regular.tint(.white.opacity(0.12)), in: WWDC26SlabBodyShape())
+            .glassEffect(.regular.tint(.white.opacity(0.04)), in: WWDC26SlabBodyShape())
             .mask { glassBodyMask }
-            .offset(x: 1.5, y: 2.5)
-            .opacity(0.55)
+            .offset(x: 0.5, y: 1.0)
+            .opacity(0.25)
     }
 
     private var mainGlassLayer: some View {
@@ -33,20 +34,38 @@ struct WWDC26GlassOverlay: View {
             .mask { glassBodyMask }
     }
 
+    private var innerEdgeShadow: some View {
+        WWDC26OutlineShape()
+            .stroke(
+                LinearGradient(
+                    colors: [
+                        .clear,
+                        .black.opacity(0.08),
+                        .black.opacity(0.15)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                lineWidth: 1.5
+            )
+            .frame(width: slabWidth, height: slabHeight)
+            .offset(y: 1)
+    }
+
     private var edgeHighlightLayer: some View {
         WWDC26OutlineShape()
             .stroke(
                 LinearGradient(
                     colors: [
-                        .white.opacity(0.9),
-                        .white.opacity(0.2),
+                        .white.opacity(0.55),
+                        .white.opacity(0.15),
                         .white.opacity(0.05),
-                        .white.opacity(0.35)
+                        .white.opacity(0.25)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ),
-                lineWidth: 2
+                lineWidth: 1.5
             )
             .frame(width: slabWidth, height: slabHeight)
     }
@@ -56,7 +75,7 @@ struct WWDC26GlassOverlay: View {
             .stroke(
                 LinearGradient(
                     colors: [
-                        .white.opacity(0.6),
+                        .white.opacity(0.35),
                         .white.opacity(0.0)
                     ],
                     startPoint: .top,
@@ -65,7 +84,7 @@ struct WWDC26GlassOverlay: View {
                 lineWidth: 1
             )
             .frame(width: slabWidth, height: slabHeight)
-            .opacity(0.5)
+            .opacity(0.25)
     }
 
     private var glassBodyMask: some View {

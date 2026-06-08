@@ -45,9 +45,10 @@ struct DefaultPreviewSource: PreviewSource {
 actor CameraSession {
     nonisolated let previewSource: PreviewSource
 
-    private let captureSession = AVCaptureSession()
-    private let photoOutput = AVCapturePhotoOutput()
-    private var isConfigured = false
+    private nonisolated(unsafe) let captureSession = AVCaptureSession()
+    private nonisolated(unsafe) let photoOutput = AVCapturePhotoOutput()
+    private nonisolated(unsafe) var isConfigured = false
+    private let sessionQueue = DispatchSerialQueue(label: "com.wwdc2026.camera.session")
 
     init() {
         previewSource = DefaultPreviewSource(session: captureSession)
@@ -70,30 +71,69 @@ actor CameraSession {
         return
 #else
         try await requestAccessIfNeeded()
-        try configureIfNeeded()
-        guard !captureSession.isRunning else { return }
-        captureSession.startRunning()
+        try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async { [captureSession] in
+                do {
+                    try CameraSession.configureIfNeeded(
+                        captureSession: captureSession,
+                        photoOutput: self.photoOutput,
+                        isConfigured: &self.isConfigured
+                    )
+                    guard !captureSession.isRunning else {
+                        continuation.resume()
+                        return
+                    }
+                    captureSession.startRunning()
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
 #endif
     }
 
-    func stop() {
-        guard captureSession.isRunning else { return }
-        captureSession.stopRunning()
+    func stop() async {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [captureSession] in
+                guard captureSession.isRunning else {
+                    continuation.resume()
+                    return
+                }
+                captureSession.stopRunning()
+                continuation.resume()
+            }
+        }
     }
 
     func capturePhoto() async throws -> Data {
 #if targetEnvironment(simulator)
         return try makeSimulatorPhotoData()
 #else
-        try configureIfNeeded()
         return try await withCheckedThrowingContinuation { continuation in
-            let settings: AVCapturePhotoSettings
-            if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
-                settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
-            } else {
-                settings = AVCapturePhotoSettings()
+            sessionQueue.async { [captureSession, photoOutput] in
+                do {
+                    try CameraSession.configureIfNeeded(
+                        captureSession: captureSession,
+                        photoOutput: photoOutput,
+                        isConfigured: &self.isConfigured
+                    )
+
+                    let settings: AVCapturePhotoSettings
+                    if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
+                        settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
+                    } else {
+                        settings = AVCapturePhotoSettings()
+                    }
+
+                    photoOutput.capturePhoto(
+                        with: settings,
+                        delegate: PhotoCaptureDelegate(continuation: continuation)
+                    )
+                } catch {
+                    continuation.resume(throwing: error)
+                }
             }
-            photoOutput.capturePhoto(with: settings, delegate: PhotoCaptureDelegate(continuation: continuation))
         }
 #endif
     }
@@ -128,7 +168,11 @@ actor CameraSession {
     }
 #endif
 
-    private func configureIfNeeded() throws {
+    private nonisolated static func configureIfNeeded(
+        captureSession: AVCaptureSession,
+        photoOutput: AVCapturePhotoOutput,
+        isConfigured: inout Bool
+    ) throws {
         guard !isConfigured else { return }
 
         captureSession.beginConfiguration()
@@ -165,6 +209,9 @@ actor CameraSession {
 
 private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
     private let continuation: CheckedContinuation<Data, Error>
+    private nonisolated(unsafe) var photoData: Data?
+    private let lock = NSLock()
+    private nonisolated(unsafe) var hasResumed = false
 
     nonisolated init(continuation: CheckedContinuation<Data, Error>) {
         self.continuation = continuation
@@ -176,15 +223,43 @@ private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegat
         error: Error?
     ) {
         if let error {
-            continuation.resume(throwing: error)
+            resumeOnce(throwing: error)
+            return
+        }
+        photoData = photo.fileDataRepresentation()
+    }
+
+    nonisolated func photoOutput(
+        _ output: AVCapturePhotoOutput,
+        didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings,
+        error: Error?
+    ) {
+        if let error {
+            resumeOnce(throwing: error)
             return
         }
 
-        guard let data = photo.fileDataRepresentation() else {
-            continuation.resume(throwing: CameraSessionError.noPhotoData)
+        guard let photoData else {
+            resumeOnce(throwing: CameraSessionError.noPhotoData)
             return
         }
 
+        resumeOnce(returning: photoData)
+    }
+
+    nonisolated private func resumeOnce(returning data: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !hasResumed else { return }
+        hasResumed = true
         continuation.resume(returning: data)
+    }
+
+    nonisolated private func resumeOnce(throwing error: Error) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !hasResumed else { return }
+        hasResumed = true
+        continuation.resume(throwing: error)
     }
 }
