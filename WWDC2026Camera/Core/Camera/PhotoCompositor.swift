@@ -1,4 +1,3 @@
-import SwiftUI
 import UIKit
 
 struct OverlayTransform: Sendable, Equatable {
@@ -49,94 +48,135 @@ enum AspectFillMapper: Sendable {
     }
 }
 
-@MainActor
 enum PhotoCompositor {
-    static func normalizedImage(from data: Data) -> UIImage? {
+    nonisolated static func normalizedImage(from data: Data) -> UIImage? {
         guard let image = UIImage(data: data) else { return nil }
         return image.normalizedUpOrientation()
     }
 
-    static func composite(photo: UIImage, transform: OverlayTransform) -> UIImage? {
-        let photoSize = photo.size
+    nonisolated static func overlayRect(for transform: OverlayTransform, photoSize: CGSize) -> CGRect? {
         guard photoSize.width > 0, photoSize.height > 0 else { return nil }
 
+        let previewSize = effectivePreviewSize(transform.previewSize)
         let previewCenter = CGPoint(
-            x: transform.previewSize.width / 2 + transform.offset.width,
-            y: transform.previewSize.height / 2 + transform.offset.height
+            x: previewSize.width / 2 + transform.offset.width,
+            y: previewSize.height / 2 + transform.offset.height
         )
 
         let mappedCenter = AspectFillMapper.map(
             point: previewCenter,
-            from: transform.previewSize,
+            from: previewSize,
             to: photoSize
         )
 
         let mappedScale = transform.scale * AspectFillMapper.scaleFactor(
-            from: transform.previewSize,
+            from: previewSize,
             to: photoSize
         )
 
-        let content = CompositeContentView(
-            photo: photo,
-            overlayCenter: mappedCenter,
-            overlayScale: mappedScale,
-            canvasSize: photoSize
-        )
+        let overlayWidth = WWDC26SlabMetrics.defaultWidth * mappedScale
+        let overlayHeight = WWDC26SlabMetrics.defaultHeight * mappedScale
 
-        return renderToImage(content, size: photoSize, scale: photo.scale)
+        var patchRect = CGRect(
+            x: mappedCenter.x - overlayWidth / 2,
+            y: mappedCenter.y - overlayHeight / 2,
+            width: overlayWidth,
+            height: overlayHeight
+        )
+        patchRect = patchRect.intersection(CGRect(origin: .zero, size: photoSize))
+
+        guard patchRect.width > 0, patchRect.height > 0 else { return nil }
+        return patchRect
     }
 
-    static func renderToImage<V: View>(_ view: V, size: CGSize, scale: CGFloat) -> UIImage? {
-        let hostingController = UIHostingController(rootView: view)
-        hostingController.view.bounds = CGRect(origin: .zero, size: size)
-        hostingController.view.backgroundColor = .clear
+    nonisolated static func composite(
+        photo: UIImage,
+        overlaySnapshot: UIImage?,
+        transform: OverlayTransform
+    ) -> UIImage? {
+        let photoSize = photo.size
+        guard let patchRect = overlayRect(for: transform, photoSize: photoSize) else {
+            return photo
+        }
 
-        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
-        window.rootViewController = hostingController
-        window.isHidden = false
-        window.layoutIfNeeded()
-        hostingController.view.setNeedsLayout()
-        hostingController.view.layoutIfNeeded()
-
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = max(scale, 1)
-        format.opaque = true
-
-        let renderer = UIGraphicsImageRenderer(size: size, format: format)
-        return renderer.image { _ in
-            hostingController.view.drawHierarchy(
-                in: hostingController.view.bounds,
-                afterScreenUpdates: true
+        if let overlaySnapshot {
+            return drawPhotoWithOverlaySnapshot(
+                photo: photo,
+                overlaySnapshot: overlaySnapshot,
+                patchRect: patchRect
             )
         }
+
+        return drawPhotoWithOverlayFallback(
+            photo: photo,
+            patchRect: patchRect,
+            overlayScale: patchRect.width / WWDC26SlabMetrics.defaultWidth
+        )
     }
-}
 
-private struct CompositeContentView: View {
-    let photo: UIImage
-    let overlayCenter: CGPoint
-    let overlayScale: CGFloat
-    let canvasSize: CGSize
-
-    var body: some View {
-        ZStack {
-            Image(uiImage: photo)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: canvasSize.width, height: canvasSize.height)
-                .clipped()
-
-            WWDC26GlassOverlay(scale: overlayScale)
-                .position(overlayCenter)
+    nonisolated private static func effectivePreviewSize(_ previewSize: CGSize) -> CGSize {
+        if previewSize.width > 0, previewSize.height > 0 {
+            return previewSize
         }
-        .frame(width: canvasSize.width, height: canvasSize.height)
+        return CGSize(width: 390, height: 844)
+    }
+
+    nonisolated private static func drawPhotoWithOverlaySnapshot(
+        photo: UIImage,
+        overlaySnapshot: UIImage,
+        patchRect: CGRect
+    ) -> UIImage? {
+        let photoSize = photo.size
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = photo.scale
+        format.opaque = true
+
+        return UIGraphicsImageRenderer(size: photoSize, format: format).image { _ in
+            photo.draw(in: CGRect(origin: .zero, size: photoSize))
+            overlaySnapshot.draw(in: patchRect)
+        }
+    }
+
+    nonisolated private static func drawPhotoWithOverlayFallback(
+        photo: UIImage,
+        patchRect: CGRect,
+        overlayScale: CGFloat
+    ) -> UIImage? {
+        let photoSize = photo.size
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = photo.scale
+        format.opaque = true
+
+        return UIGraphicsImageRenderer(size: photoSize, format: format).image { context in
+            photo.draw(in: CGRect(origin: .zero, size: photoSize))
+            context.cgContext.saveGState()
+            context.cgContext.translateBy(x: patchRect.midX, y: patchRect.midY)
+            context.cgContext.scaleBy(x: overlayScale, y: overlayScale)
+            context.cgContext.translateBy(
+                x: -WWDC26SlabMetrics.defaultWidth / 2,
+                y: -WWDC26SlabMetrics.defaultHeight / 2
+            )
+            context.cgContext.setAlpha(0.35)
+            context.cgContext.fill(
+                CGRect(
+                    x: 0,
+                    y: 0,
+                    width: WWDC26SlabMetrics.defaultWidth,
+                    height: WWDC26SlabMetrics.defaultHeight
+                )
+            )
+            context.cgContext.restoreGState()
+        }
     }
 }
 
-private extension UIImage {
-    func normalizedUpOrientation() -> UIImage {
+extension UIImage {
+    nonisolated func normalizedUpOrientation() -> UIImage {
         guard imageOrientation != .up else { return self }
-        return UIGraphicsImageRenderer(size: size).image { _ in
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = scale
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
             draw(in: CGRect(origin: .zero, size: size))
         }
     }

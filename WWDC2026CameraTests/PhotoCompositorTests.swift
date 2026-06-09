@@ -1,5 +1,6 @@
 import CoreGraphics
 import Testing
+import UIKit
 @testable import WWDC2026Camera
 
 @Suite("AspectFillMapper")
@@ -107,5 +108,74 @@ struct OverlayTransformTests {
 
         #expect(mappedDefault.y < mappedOrigin.y)
         #expect(abs(mappedOrigin.y - mappedDefault.y - 10) < 0.001)
+    }
+}
+
+@Suite("PhotoCompositor")
+struct PhotoCompositorCompositeTests {
+    @Test("Overlay rect stays within photo bounds")
+    func overlayRectWithinBounds() {
+        let photoSize = CGSize(width: 4032, height: 3024)
+        let transform = OverlayTransform(
+            offset: CGSize(width: 0, height: OverlayTransform.defaultVerticalOffset),
+            scale: 1.0,
+            previewSize: CGSize(width: 390, height: 844)
+        )
+
+        let rect = PhotoCompositor.overlayRect(for: transform, photoSize: photoSize)
+
+        #expect(rect != nil)
+        #expect(rect!.minX >= 0)
+        #expect(rect!.minY >= 0)
+        #expect(rect!.maxX <= photoSize.width)
+        #expect(rect!.maxY <= photoSize.height)
+    }
+
+    @Test("Composite with overlay snapshot preserves photo dimensions")
+    func compositePreservesPhotoDimensions() {
+        let photoSize = CGSize(width: 400, height: 300)
+        let photo = makeSolidImage(size: photoSize, color: .green)
+        let overlay = makeSolidImage(size: CGSize(width: 80, height: 120), color: .red)
+        let transform = OverlayTransform(
+            offset: .zero,
+            scale: 1.0,
+            previewSize: photoSize
+        )
+
+        let result = PhotoCompositor.composite(
+            photo: photo,
+            overlaySnapshot: overlay,
+            transform: transform
+        )
+
+        #expect(result != nil)
+        #expect(result?.size == photoSize)
+    }
+
+    @Test("Composite without snapshot still returns photo")
+    func compositeWithoutSnapshotUsesFallback() {
+        let photoSize = CGSize(width: 400, height: 300)
+        let photo = makeSolidImage(size: photoSize, color: .blue)
+        let transform = OverlayTransform(
+            offset: .zero,
+            scale: 1.0,
+            previewSize: photoSize
+        )
+
+        let result = PhotoCompositor.composite(
+            photo: photo,
+            overlaySnapshot: nil,
+            transform: transform
+        )
+
+        #expect(result != nil)
+        #expect(result?.size == photoSize)
+    }
+}
+
+private func makeSolidImage(size: CGSize, color: UIColor) -> UIImage {
+    UIGraphicsImageRenderer(size: size).image { context in
+        color.setFill()
+        context.fill(CGRect(origin: .zero, size: size))
     }
 }

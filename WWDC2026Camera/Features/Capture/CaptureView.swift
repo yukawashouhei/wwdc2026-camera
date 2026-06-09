@@ -11,7 +11,7 @@ struct CaptureView: View {
             ZStack {
                 cameraLayer
 
-                WWDC26GlassOverlay(scale: viewModel.overlayScale)
+                GlassOverlayHost(scale: viewModel.overlayScale)
                     .offset(
                         x: viewModel.overlayOffset.width,
                         y: viewModel.overlayOffset.height

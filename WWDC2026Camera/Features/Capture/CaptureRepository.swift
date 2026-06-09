@@ -33,21 +33,13 @@ struct LiveCaptureRepository: CaptureRepositoryProtocol {
             throw CaptureRepositoryError.photoLibraryUnauthorized
         }
 
-        let preparedImage = image.preparedForPhotoLibrary()
+        guard let jpegData = image.jpegDataForPhotoLibrary() else {
+            throw CaptureRepositoryError.saveFailed
+        }
 
-        do {
-            try await PHPhotoLibrary.shared().performChanges {
-                PHAssetChangeRequest.creationRequestForAsset(from: preparedImage)
-            }
-        } catch {
-            guard let jpegData = preparedImage.jpegData(compressionQuality: 0.95) else {
-                throw CaptureRepositoryError.saveFailed
-            }
-
-            try await PHPhotoLibrary.shared().performChanges {
-                let request = PHAssetCreationRequest.forAsset()
-                request.addResource(with: .photo, data: jpegData, options: nil)
-            }
+        try await PHPhotoLibrary.shared().performChanges {
+            let request = PHAssetCreationRequest.forAsset()
+            request.addResource(with: .photo, data: jpegData, options: nil)
         }
     }
 }
@@ -56,6 +48,7 @@ enum CaptureRepositoryError: Error, LocalizedError {
     case photoLibraryUnauthorized
     case compositionFailed
     case saveFailed
+    case captureTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -65,21 +58,24 @@ enum CaptureRepositoryError: Error, LocalizedError {
             "写真の合成に失敗しました。もう一度お試しください。"
         case .saveFailed:
             "写真の保存に失敗しました。もう一度お試しください。"
+        case .captureTimedOut:
+            "撮影処理がタイムアウトしました。もう一度お試しください。"
         }
     }
 }
 
 private extension UIImage {
-    func preparedForPhotoLibrary() -> UIImage {
-        if cgImage != nil {
-            return self
+    func jpegDataForPhotoLibrary() -> Data? {
+        if let data = jpegData(compressionQuality: 0.95) {
+            return data
         }
 
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
         format.opaque = true
-        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+        let rendered = UIGraphicsImageRenderer(size: size, format: format).image { _ in
             draw(in: CGRect(origin: .zero, size: size))
         }
+        return rendered.jpegData(compressionQuality: 0.95)
     }
 }

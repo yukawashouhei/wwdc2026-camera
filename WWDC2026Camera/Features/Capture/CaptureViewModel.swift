@@ -63,34 +63,101 @@ final class CaptureViewModel {
         defer { isCapturing = false }
 
         do {
-            let data = try await repository.capturePhoto()
-            logger.info("Photo captured: \(data.count) bytes")
-
-            guard let photo = PhotoCompositor.normalizedImage(from: data) else {
-                logger.error("Failed to normalize captured photo")
-                throw CaptureRepositoryError.compositionFailed
-            }
-
-            let transform = OverlayTransform(
-                offset: overlayOffset,
-                scale: overlayScale,
-                previewSize: previewSize
-            )
-
-            guard let composited = PhotoCompositor.composite(photo: photo, transform: transform) else {
-                logger.error("Failed to composite overlay onto photo")
-                throw CaptureRepositoryError.compositionFailed
-            }
-
-            try await repository.saveToPhotoLibrary(composited)
-            logger.info("Photo saved to library")
-            showSaveConfirmation = true
-
-            try? await Task.sleep(for: .seconds(1.5))
-            showSaveConfirmation = false
+            try await performCaptureWithTimeout()
         } catch {
             logger.error("Capture flow failed: \(error.localizedDescription)")
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
+    }
+
+    private func performCaptureWithTimeout() async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            let gate = CaptureCompletionGate()
+
+            let work = Task { @MainActor in
+                do {
+                    try await self.performCapture()
+                    gate.finishOnce {
+                        continuation.resume()
+                    }
+                } catch {
+                    gate.finishOnce {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+
+            Task {
+                try? await Task.sleep(for: .seconds(20))
+                gate.finishOnce {
+                    work.cancel()
+                    continuation.resume(throwing: CaptureRepositoryError.captureTimedOut)
+                }
+            }
+        }
+    }
+
+    private func performCapture() async throws {
+        let overlaySnapshot = OverlaySnapshotter.snapshot()
+        logger.info("Overlay snapshot captured: \(overlaySnapshot != nil)")
+
+        let data = try await repository.capturePhoto()
+        logger.info("Photo captured: \(data.count) bytes")
+
+        let effectivePreviewSize = previewSize.width > 0 && previewSize.height > 0
+            ? previewSize
+            : UIScreen.main.bounds.size
+
+        let transform = OverlayTransform(
+            offset: overlayOffset,
+            scale: overlayScale,
+            previewSize: effectivePreviewSize
+        )
+
+        let composited = try compositePhoto(
+            data: data,
+            overlaySnapshot: overlaySnapshot,
+            transform: transform
+        )
+
+        try await repository.saveToPhotoLibrary(composited)
+        logger.info("Photo saved to library")
+        showSaveConfirmation = true
+
+        try? await Task.sleep(for: .seconds(1.5))
+        showSaveConfirmation = false
+    }
+
+    private func compositePhoto(
+        data: Data,
+        overlaySnapshot: UIImage?,
+        transform: OverlayTransform
+    ) throws -> UIImage {
+        guard let photo = PhotoCompositor.normalizedImage(from: data) else {
+            throw CaptureRepositoryError.compositionFailed
+        }
+
+        guard let composited = PhotoCompositor.composite(
+            photo: photo,
+            overlaySnapshot: overlaySnapshot,
+            transform: transform
+        ) else {
+            throw CaptureRepositoryError.compositionFailed
+        }
+
+        return composited
+    }
+}
+
+private final class CaptureCompletionGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isFinished = false
+
+    func finishOnce(_ action: () -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isFinished else { return }
+        isFinished = true
+        action()
     }
 }
