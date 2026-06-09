@@ -61,6 +61,28 @@ struct PhotoCompositorTests {
     }
 }
 
+@Suite("WWDC26ObjectMetrics")
+struct WWDC26ObjectMetricsTests {
+    @Test("Unit with base is taller than slab-only unit")
+    func unitWithBaseIsTaller() {
+        let slabOnly = WWDC26ObjectMetrics.unitSize(showBase: false)
+        let withBase = WWDC26ObjectMetrics.unitSize(showBase: true)
+
+        #expect(withBase.height > slabOnly.height)
+        #expect(withBase.width >= slabOnly.width)
+    }
+
+    @Test("Base shape produces non-empty path")
+    func baseShapeIsNonEmpty() {
+        let rect = CGRect(origin: .zero, size: WWDC26ObjectMetrics.baseSize)
+        let path = WWDC26BaseShape().path(in: rect)
+
+        #expect(!path.isEmpty)
+        #expect(path.boundingRect.width > 0)
+        #expect(path.boundingRect.height > 0)
+    }
+}
+
 @Suite("WWDC26SlabMetrics")
 struct WWDC26SlabMetricsTests {
     @Test("Maintains SVG viewBox aspect ratio")
@@ -113,6 +135,36 @@ struct OverlayTransformTests {
 
 @Suite("PhotoCompositor")
 struct PhotoCompositorCompositeTests {
+    @Test("Overlay rect height changes when base is toggled")
+    func overlayRectHeightChangesWithBase() {
+        let photoSize = CGSize(width: 4032, height: 3024)
+        let previewSize = CGSize(width: 390, height: 844)
+        let offset = CGSize(width: 0, height: OverlayTransform.defaultVerticalOffset)
+
+        let withBase = PhotoCompositor.overlayRect(
+            for: OverlayTransform(
+                offset: offset,
+                scale: 1.0,
+                previewSize: previewSize,
+                showBase: true
+            ),
+            photoSize: photoSize
+        )
+        let withoutBase = PhotoCompositor.overlayRect(
+            for: OverlayTransform(
+                offset: offset,
+                scale: 1.0,
+                previewSize: previewSize,
+                showBase: false
+            ),
+            photoSize: photoSize
+        )
+
+        #expect(withBase != nil)
+        #expect(withoutBase != nil)
+        #expect(withBase!.height > withoutBase!.height)
+    }
+
     @Test("Overlay rect stays within photo bounds")
     func overlayRectWithinBounds() {
         let photoSize = CGSize(width: 4032, height: 3024)

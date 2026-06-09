@@ -7,6 +7,7 @@ import UIKit
 final class CaptureViewModel {
     var overlayOffset = CGSize(width: 0, height: OverlayTransform.defaultVerticalOffset)
     var overlayScale: CGFloat = 1.0
+    var showBase = true
     var previewSize = CGSize.zero
     var isCapturing = false
     var showSaveConfirmation = false
@@ -57,6 +58,10 @@ final class CaptureViewModel {
         overlayScale = magnificationBaseScale
     }
 
+    func toggleBase() {
+        showBase.toggle()
+    }
+
     func capturePhoto() async {
         guard !isCapturing else { return }
         isCapturing = true
@@ -79,7 +84,8 @@ final class CaptureViewModel {
         let transform = OverlayTransform(
             offset: overlayOffset,
             scale: overlayScale,
-            previewSize: previewSize
+            previewSize: previewSize,
+            showBase: showBase
         )
 
         let composited = try compositePhoto(

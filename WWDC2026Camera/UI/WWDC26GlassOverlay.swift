@@ -11,6 +11,7 @@ struct WWDC26GlassOverlay: View {
             innerEdgeShadow
             depthGlassLayer
             mainGlassLayer
+            topBlackGradient
             edgeHighlightLayer
             topRimHighlight
         }
@@ -32,6 +33,20 @@ struct WWDC26GlassOverlay: View {
             .frame(width: slabWidth, height: slabHeight)
             .glassEffect(.clear, in: WWDC26SlabBodyShape())
             .mask { glassBodyMask }
+    }
+
+    private var topBlackGradient: some View {
+        LinearGradient(
+            colors: [
+                .black.opacity(0.65),
+                .black.opacity(0.35),
+                .clear
+            ],
+            startPoint: .top,
+            endPoint: UnitPoint(x: 0.5, y: 0.45)
+        )
+        .frame(width: slabWidth, height: slabHeight)
+        .mask { glassBodyMask }
     }
 
     private var innerEdgeShadow: some View {

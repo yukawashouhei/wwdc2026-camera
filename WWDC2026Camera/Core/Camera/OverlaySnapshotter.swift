@@ -53,17 +53,18 @@ enum OverlaySnapshotter {
 
 struct GlassOverlayHost: UIViewControllerRepresentable {
     var scale: CGFloat
+    var showBase: Bool
     var identifier: String = OverlaySnapshotter.glassOverlayIdentifier
 
-    func makeUIViewController(context: Context) -> UIHostingController<WWDC26GlassOverlay> {
-        let host = UIHostingController(rootView: WWDC26GlassOverlay(scale: scale))
+    func makeUIViewController(context: Context) -> UIHostingController<WWDC26GlassObject> {
+        let host = UIHostingController(rootView: WWDC26GlassObject(scale: scale, showBase: showBase))
         host.view.backgroundColor = .clear
         host.view.accessibilityIdentifier = identifier
         return host
     }
 
-    func updateUIViewController(_ host: UIHostingController<WWDC26GlassOverlay>, context: Context) {
-        host.rootView = WWDC26GlassOverlay(scale: scale)
+    func updateUIViewController(_ host: UIHostingController<WWDC26GlassObject>, context: Context) {
+        host.rootView = WWDC26GlassObject(scale: scale, showBase: showBase)
         host.view.accessibilityIdentifier = identifier
     }
 }

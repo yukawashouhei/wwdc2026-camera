@@ -11,10 +11,10 @@ struct CaptureView: View {
             ZStack {
                 cameraLayer
 
-                GlassOverlayHost(scale: viewModel.overlayScale)
+                GlassOverlayHost(scale: viewModel.overlayScale, showBase: viewModel.showBase)
                     .frame(
-                        width: WWDC26SlabMetrics.defaultWidth * viewModel.overlayScale,
-                        height: WWDC26SlabMetrics.defaultHeight * viewModel.overlayScale
+                        width: WWDC26ObjectMetrics.unitSize(showBase: viewModel.showBase).width * viewModel.overlayScale,
+                        height: WWDC26ObjectMetrics.unitSize(showBase: viewModel.showBase).height * viewModel.overlayScale
                     )
                     .offset(
                         x: viewModel.overlayOffset.width,
@@ -68,22 +68,41 @@ struct CaptureView: View {
 
             Spacer()
 
-            Button {
-                Task { await viewModel.capturePhoto() }
-            } label: {
-                ZStack {
-                    Circle()
-                        .strokeBorder(.white, lineWidth: 4)
-                        .frame(width: 78, height: 78)
+            ZStack {
+                Button {
+                    Task { await viewModel.capturePhoto() }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .strokeBorder(.white, lineWidth: 4)
+                            .frame(width: 78, height: 78)
 
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 64, height: 64)
-                        .opacity(viewModel.isCapturing ? 0.5 : 1.0)
+                        Circle()
+                            .fill(.white)
+                            .frame(width: 64, height: 64)
+                            .opacity(viewModel.isCapturing ? 0.5 : 1.0)
+                    }
                 }
+                .disabled(viewModel.isCapturing)
+                .accessibilityLabel("撮影")
+
+                HStack {
+                    Spacer()
+
+                    Button {
+                        viewModel.toggleBase()
+                    } label: {
+                        Image(systemName: viewModel.showBase ? "square.3.layers.3d.top.filled" : "square.3.layers.3d")
+                            .font(.title3)
+                            .foregroundStyle(.white)
+                            .frame(width: 52, height: 52)
+                            .glassEffect(.regular, in: Circle())
+                    }
+                    .accessibilityLabel("台座の表示")
+                    .accessibilityValue(viewModel.showBase ? "オン" : "オフ")
+                }
+                .padding(.horizontal, 32)
             }
-            .disabled(viewModel.isCapturing)
-            .accessibilityLabel("撮影")
             .padding(.bottom, 48)
         }
     }

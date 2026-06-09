@@ -4,6 +4,7 @@ struct OverlayTransform: Sendable, Equatable {
     var offset: CGSize
     var scale: CGFloat
     var previewSize: CGSize
+    var showBase: Bool = true
 
     nonisolated static let defaultVerticalOffset: CGFloat = -10
 }
@@ -74,8 +75,9 @@ enum PhotoCompositor {
             to: photoSize
         )
 
-        let overlayWidth = WWDC26SlabMetrics.defaultWidth * mappedScale
-        let overlayHeight = WWDC26SlabMetrics.defaultHeight * mappedScale
+        let unitSize = WWDC26ObjectMetrics.unitSize(showBase: transform.showBase)
+        let overlayWidth = unitSize.width * mappedScale
+        let overlayHeight = unitSize.height * mappedScale
 
         var patchRect = CGRect(
             x: mappedCenter.x - overlayWidth / 2,
@@ -107,10 +109,11 @@ enum PhotoCompositor {
             )
         }
 
+        let unitWidth = WWDC26ObjectMetrics.unitSize(showBase: transform.showBase).width
         return drawPhotoWithOverlayFallback(
             photo: photo,
             patchRect: patchRect,
-            overlayScale: patchRect.width / WWDC26SlabMetrics.defaultWidth
+            overlayScale: patchRect.width / unitWidth
         )
     }
 
