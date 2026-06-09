@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 import UIKit
 
@@ -7,6 +7,7 @@ enum CameraSessionError: Error, LocalizedError {
     case configurationFailed
     case noPhotoData
     case captureTimedOut
+    case sessionNotRunning
 
     var errorDescription: String? {
         switch self {
@@ -18,6 +19,8 @@ enum CameraSessionError: Error, LocalizedError {
             "写真データを取得できませんでした。"
         case .captureTimedOut:
             "写真の撮影がタイムアウトしました。もう一度お試しください。"
+        case .sessionNotRunning:
+            "カメラセッションが起動していません。"
         }
     }
 }
@@ -51,7 +54,8 @@ actor CameraSession {
     private nonisolated(unsafe) let captureSession = AVCaptureSession()
     private nonisolated(unsafe) let photoOutput = AVCapturePhotoOutput()
     private nonisolated(unsafe) var isConfigured = false
-    private let sessionQueue = DispatchSerialQueue(label: "com.wwdc2026.camera.session")
+    private nonisolated(unsafe) var inFlightCapture: PhotoCaptureRequest?
+    private nonisolated let sessionQueue = DispatchSerialQueue(label: "com.wwdc2026.camera.session")
 
     init() {
         previewSource = DefaultPreviewSource(session: captureSession)
@@ -113,20 +117,12 @@ actor CameraSession {
 #if targetEnvironment(simulator)
         return try makeSimulatorPhotoData()
 #else
-        try await withThrowingTaskGroup(of: Data.self) { group in
-            group.addTask {
-                try await self.capturePhotoOnSessionQueue()
+        try await withTaskCancellationHandler {
+            try await capturePhotoOnSessionQueue()
+        } onCancel: {
+            self.sessionQueue.async {
+                self.cancelInFlightCapture(reason: CancellationError())
             }
-            group.addTask {
-                try await Task.sleep(for: .seconds(15))
-                throw CameraSessionError.captureTimedOut
-            }
-
-            guard let data = try await group.next() else {
-                throw CameraSessionError.noPhotoData
-            }
-            group.cancelAll()
-            return data
         }
 #endif
     }
@@ -134,7 +130,24 @@ actor CameraSession {
 #if !targetEnvironment(simulator)
     private func capturePhotoOnSessionQueue() async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
-            sessionQueue.async { [captureSession, photoOutput] in
+            sessionQueue.async { [captureSession, photoOutput, sessionQueue] in
+                self.inFlightCapture?.fail(CameraSessionError.captureTimedOut)
+
+                let request = PhotoCaptureRequest(continuation: continuation) { [self] finishedRequest in
+                    self.clearInFlightCapture(finishedRequest)
+                }
+                self.inFlightCapture = request
+
+                sessionQueue.asyncAfter(deadline: .now() + 15) { [weak request] in
+                    request?.fail(CameraSessionError.captureTimedOut)
+                }
+
+                guard captureSession.isRunning else {
+                    request.fail(CameraSessionError.sessionNotRunning)
+                    self.clearInFlightCapture(request)
+                    return
+                }
+
                 do {
                     try CameraSession.configureIfNeeded(
                         captureSession: captureSession,
@@ -144,22 +157,40 @@ actor CameraSession {
 
                     let settings = CameraSession.makePhotoSettings(for: photoOutput)
 
-                    photoOutput.capturePhoto(
-                        with: settings,
-                        delegate: PhotoCaptureDelegate(continuation: continuation)
-                    )
+                    photoOutput.capturePhoto(with: settings, delegate: request.delegate)
                 } catch {
-                    continuation.resume(throwing: error)
+                    request.fail(error)
+                    self.clearInFlightCapture(request)
                 }
             }
         }
     }
 
-    private nonisolated static func makePhotoSettings(for photoOutput: AVCapturePhotoOutput) -> AVCapturePhotoSettings {
-        if photoOutput.availablePhotoCodecTypes.contains(.jpeg) {
-            return AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
+    private nonisolated func cancelInFlightCapture(reason: Error) {
+        inFlightCapture?.fail(reason)
+        inFlightCapture = nil
+    }
+
+    private nonisolated func clearInFlightCapture(_ request: PhotoCaptureRequest) {
+        if inFlightCapture === request {
+            inFlightCapture = nil
         }
-        return AVCapturePhotoSettings()
+    }
+
+    private nonisolated static func makePhotoSettings(for photoOutput: AVCapturePhotoOutput) -> AVCapturePhotoSettings {
+        let settings: AVCapturePhotoSettings
+        if photoOutput.availablePhotoCodecTypes.contains(.jpeg) {
+            settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
+        } else {
+            settings = AVCapturePhotoSettings()
+        }
+
+        let dimensions = photoOutput.maxPhotoDimensions
+        if dimensions.width > 0, dimensions.height > 0 {
+            settings.maxPhotoDimensions = dimensions
+        }
+
+        return settings
     }
 #endif
 
@@ -227,21 +258,83 @@ actor CameraSession {
         captureSession.addOutput(photoOutput)
 
         photoOutput.isAutoDeferredPhotoDeliveryEnabled = false
+        photoOutput.maxPhotoQualityPrioritization = .balanced
 
-        if let dimensions = camera.activeFormat.supportedMaxPhotoDimensions.last {
+        if let dimensions = camera.activeFormat.supportedMaxPhotoDimensions.max(by: {
+            $0.width * $0.height < $1.width * $1.height
+        }) {
             photoOutput.maxPhotoDimensions = dimensions
         }
     }
 }
 
-private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
+private final class PhotoCaptureRequest: @unchecked Sendable {
     private let continuation: CheckedContinuation<Data, Error>
+    private let onFinish: @Sendable (PhotoCaptureRequest) -> Void
     private let lock = NSLock()
     private nonisolated(unsafe) var hasResumed = false
     private nonisolated(unsafe) var pendingData: Data?
+    private nonisolated(unsafe) var storedDelegate: PhotoCaptureDelegate?
 
-    nonisolated init(continuation: CheckedContinuation<Data, Error>) {
+    nonisolated var delegate: PhotoCaptureDelegate {
+        if let storedDelegate {
+            return storedDelegate
+        }
+        let created = PhotoCaptureDelegate(request: self)
+        storedDelegate = created
+        return created
+    }
+
+    nonisolated init(
+        continuation: CheckedContinuation<Data, Error>,
+        onFinish: @escaping @Sendable (PhotoCaptureRequest) -> Void
+    ) {
         self.continuation = continuation
+        self.onFinish = onFinish
+    }
+
+    nonisolated func storeData(_ data: Data) {
+        lock.lock()
+        pendingData = data
+        lock.unlock()
+    }
+
+    nonisolated func completeCapture(error: Error?) {
+        if let error {
+            fail(error)
+            return
+        }
+
+        lock.lock()
+        defer { lock.unlock() }
+        guard !hasResumed else { return }
+        hasResumed = true
+
+        if let pendingData {
+            continuation.resume(returning: pendingData)
+            onFinish(self)
+        } else {
+            continuation.resume(throwing: CameraSessionError.noPhotoData)
+            onFinish(self)
+        }
+    }
+
+    nonisolated func fail(_ error: Error) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !hasResumed else { return }
+        hasResumed = true
+
+        continuation.resume(throwing: error)
+        onFinish(self)
+    }
+}
+
+private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
+    private nonisolated(unsafe) unowned let request: PhotoCaptureRequest
+
+    nonisolated init(request: PhotoCaptureRequest) {
+        self.request = request
     }
 
     nonisolated func photoOutput(
@@ -250,12 +343,12 @@ private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegat
         error: Error?
     ) {
         if let error {
-            resumeOnce(throwing: error)
+            request.fail(error)
             return
         }
 
         if let data = photo.fileDataRepresentation(), !data.isEmpty {
-            storePendingData(data)
+            request.storeData(data)
         }
     }
 
@@ -265,12 +358,12 @@ private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegat
         error: Error?
     ) {
         if let error {
-            resumeOnce(throwing: error)
+            request.fail(error)
             return
         }
 
         if let data = deferredPhotoProxy?.fileDataRepresentation(), !data.isEmpty {
-            storePendingData(data)
+            request.storeData(data)
         }
     }
 
@@ -279,38 +372,6 @@ private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegat
         didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings,
         error: Error?
     ) {
-        if let error {
-            resumeOnce(throwing: error)
-            return
-        }
-
-        finalizeIfNeeded()
-    }
-
-    nonisolated private func storePendingData(_ data: Data) {
-        lock.lock()
-        pendingData = data
-        lock.unlock()
-    }
-
-    nonisolated private func finalizeIfNeeded() {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !hasResumed else { return }
-        hasResumed = true
-
-        if let pendingData {
-            continuation.resume(returning: pendingData)
-        } else {
-            continuation.resume(throwing: CameraSessionError.noPhotoData)
-        }
-    }
-
-    nonisolated private func resumeOnce(throwing error: Error) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !hasResumed else { return }
-        hasResumed = true
-        continuation.resume(throwing: error)
+        request.completeCapture(error: error)
     }
 }

@@ -42,7 +42,7 @@ enum OverlaySnapshotter {
         guard bounds.width > 0, bounds.height > 0 else { return nil }
 
         let format = UIGraphicsImageRendererFormat()
-        format.scale = view.window?.screen.scale ?? UIScreen.main.scale
+        format.scale = view.window?.screen.scale ?? 1
         format.opaque = false
 
         return UIGraphicsImageRenderer(size: bounds.size, format: format).image { context in
