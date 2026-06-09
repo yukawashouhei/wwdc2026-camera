@@ -2,10 +2,10 @@ import Photos
 import UIKit
 
 protocol CaptureRepositoryProtocol: Sendable {
-    func startCamera() async throws
-    func stopCamera() async
-    func capturePhoto() async throws -> Data
-    func saveToPhotoLibrary(_ image: UIImage) async throws
+    nonisolated func startCamera() async throws
+    nonisolated func stopCamera() async
+    nonisolated func capturePhoto() async throws -> Data
+    nonisolated func saveToPhotoLibrary(_ imageData: Data) async throws
 }
 
 struct LiveCaptureRepository: CaptureRepositoryProtocol {
@@ -15,31 +15,27 @@ struct LiveCaptureRepository: CaptureRepositoryProtocol {
         self.cameraSession = cameraSession
     }
 
-    func startCamera() async throws {
+    nonisolated func startCamera() async throws {
         try await cameraSession.start()
     }
 
-    func stopCamera() async {
+    nonisolated func stopCamera() async {
         await cameraSession.stop()
     }
 
-    func capturePhoto() async throws -> Data {
+    nonisolated func capturePhoto() async throws -> Data {
         try await cameraSession.capturePhoto()
     }
 
-    func saveToPhotoLibrary(_ image: UIImage) async throws {
+    nonisolated func saveToPhotoLibrary(_ imageData: Data) async throws {
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         guard status == .authorized || status == .limited else {
             throw CaptureRepositoryError.photoLibraryUnauthorized
         }
 
-        guard let jpegData = image.jpegDataForPhotoLibrary() else {
-            throw CaptureRepositoryError.saveFailed
-        }
-
         try await PHPhotoLibrary.shared().performChanges {
             let request = PHAssetCreationRequest.forAsset()
-            request.addResource(with: .photo, data: jpegData, options: nil)
+            request.addResource(with: .photo, data: imageData, options: nil)
         }
     }
 }
@@ -61,21 +57,5 @@ enum CaptureRepositoryError: Error, LocalizedError {
         case .captureTimedOut:
             "撮影処理がタイムアウトしました。もう一度お試しください。"
         }
-    }
-}
-
-private extension UIImage {
-    func jpegDataForPhotoLibrary() -> Data? {
-        if let data = jpegData(compressionQuality: 0.95) {
-            return data
-        }
-
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = scale
-        format.opaque = true
-        let rendered = UIGraphicsImageRenderer(size: size, format: format).image { _ in
-            draw(in: CGRect(origin: .zero, size: size))
-        }
-        return rendered.jpegData(compressionQuality: 0.95)
     }
 }

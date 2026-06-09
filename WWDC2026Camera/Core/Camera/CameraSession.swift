@@ -331,7 +331,7 @@ private final class PhotoCaptureRequest: @unchecked Sendable {
 }
 
 private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
-    private nonisolated(unsafe) unowned let request: PhotoCaptureRequest
+    private unowned let request: PhotoCaptureRequest
 
     nonisolated init(request: PhotoCaptureRequest) {
         self.request = request

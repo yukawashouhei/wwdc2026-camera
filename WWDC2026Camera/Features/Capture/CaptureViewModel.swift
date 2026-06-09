@@ -63,55 +63,23 @@ final class CaptureViewModel {
         defer { isCapturing = false }
 
         do {
-            try await performCaptureWithTimeout()
+            try await performCapture()
         } catch {
             logger.error("Capture flow failed: \(error.localizedDescription)")
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
-    private func performCaptureWithTimeout() async throws {
-        try await withCheckedThrowingContinuation { continuation in
-            let gate = CaptureCompletionGate()
-
-            let work = Task { @MainActor in
-                do {
-                    try await self.performCapture()
-                    gate.finishOnce {
-                        continuation.resume()
-                    }
-                } catch {
-                    gate.finishOnce {
-                        continuation.resume(throwing: error)
-                    }
-                }
-            }
-
-            Task {
-                try? await Task.sleep(for: .seconds(20))
-                gate.finishOnce {
-                    work.cancel()
-                    continuation.resume(throwing: CaptureRepositoryError.captureTimedOut)
-                }
-            }
-        }
-    }
-
     private func performCapture() async throws {
         let overlaySnapshot = OverlaySnapshotter.snapshot()
-        logger.info("Overlay snapshot captured: \(overlaySnapshot != nil)")
 
         let data = try await repository.capturePhoto()
         logger.info("Photo captured: \(data.count) bytes")
 
-        let effectivePreviewSize = previewSize.width > 0 && previewSize.height > 0
-            ? previewSize
-            : UIScreen.main.bounds.size
-
         let transform = OverlayTransform(
             offset: overlayOffset,
             scale: overlayScale,
-            previewSize: effectivePreviewSize
+            previewSize: previewSize
         )
 
         let composited = try compositePhoto(
@@ -120,7 +88,11 @@ final class CaptureViewModel {
             transform: transform
         )
 
-        try await repository.saveToPhotoLibrary(composited)
+        guard let jpegData = composited.jpegData(compressionQuality: 0.95) else {
+            throw CaptureRepositoryError.saveFailed
+        }
+
+        try await repository.saveToPhotoLibrary(jpegData)
         logger.info("Photo saved to library")
         showSaveConfirmation = true
 
@@ -146,18 +118,5 @@ final class CaptureViewModel {
         }
 
         return composited
-    }
-}
-
-private final class CaptureCompletionGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var isFinished = false
-
-    func finishOnce(_ action: () -> Void) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !isFinished else { return }
-        isFinished = true
-        action()
     }
 }
