@@ -45,8 +45,8 @@ enum OverlaySnapshotter {
         format.scale = view.window?.screen.scale ?? 1
         format.opaque = false
 
-        return UIGraphicsImageRenderer(size: bounds.size, format: format).image { context in
-            view.layer.render(in: context.cgContext)
+        return UIGraphicsImageRenderer(size: bounds.size, format: format).image { _ in
+            view.drawHierarchy(in: CGRect(origin: .zero, size: bounds.size), afterScreenUpdates: true)
         }
     }
 }

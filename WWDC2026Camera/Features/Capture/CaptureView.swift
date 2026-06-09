@@ -12,6 +12,10 @@ struct CaptureView: View {
                 cameraLayer
 
                 GlassOverlayHost(scale: viewModel.overlayScale)
+                    .frame(
+                        width: WWDC26SlabMetrics.defaultWidth * viewModel.overlayScale,
+                        height: WWDC26SlabMetrics.defaultHeight * viewModel.overlayScale
+                    )
                     .offset(
                         x: viewModel.overlayOffset.width,
                         y: viewModel.overlayOffset.height
