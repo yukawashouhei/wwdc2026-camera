@@ -14,7 +14,6 @@ struct WWDC26GlassObject: View {
             }
 
             WWDC26GlassOverlay(scale: 1.0)
-                .offset(x: WWDC26ObjectMetrics.glassHorizontalOffset(showBase: showBase))
         }
         .frame(width: unitSize.width, height: unitSize.height)
         .scaleEffect(scale)

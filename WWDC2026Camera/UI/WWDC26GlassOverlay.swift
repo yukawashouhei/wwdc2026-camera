@@ -12,6 +12,7 @@ struct WWDC26GlassOverlay: View {
             depthGlassLayer
             mainGlassLayer
             topBlackGradient
+            topReflectionHighlight
             edgeHighlightLayer
             topRimHighlight
         }
@@ -38,13 +39,29 @@ struct WWDC26GlassOverlay: View {
     private var topBlackGradient: some View {
         LinearGradient(
             colors: [
-                .black.opacity(0.65),
-                .black.opacity(0.35),
+                .black.opacity(0.96),
+                .black.opacity(0.82),
+                .black.opacity(0.45),
                 .clear
             ],
             startPoint: .top,
-            endPoint: UnitPoint(x: 0.5, y: 0.45)
+            endPoint: UnitPoint(x: 0.5, y: 0.5)
         )
+        .frame(width: slabWidth, height: slabHeight)
+        .mask { glassBodyMask }
+    }
+
+    private var topReflectionHighlight: some View {
+        LinearGradient(
+            colors: [
+                .white.opacity(0.22),
+                .white.opacity(0.06),
+                .clear
+            ],
+            startPoint: .topLeading,
+            endPoint: UnitPoint(x: 0.65, y: 0.4)
+        )
+        .blendMode(.screen)
         .frame(width: slabWidth, height: slabHeight)
         .mask { glassBodyMask }
     }

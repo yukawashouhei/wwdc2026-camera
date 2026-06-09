@@ -28,28 +28,14 @@ enum WWDC26SVGPaths: Sendable {
 
 enum SVGPathParser {
     nonisolated static func path(from svgPath: String, in rect: CGRect) -> Path {
-        path(
-            from: svgPath,
-            in: rect,
-            viewBoxWidth: WWDC26SlabMetrics.viewBoxWidth,
-            viewBoxHeight: WWDC26SlabMetrics.viewBoxHeight
-        )
-    }
-
-    nonisolated static func path(
-        from svgPath: String,
-        in rect: CGRect,
-        viewBoxWidth: CGFloat,
-        viewBoxHeight: CGFloat
-    ) -> Path {
         let commands = tokenize(svgPath)
         var swiftPath = Path()
         var currentPoint = CGPoint.zero
         var startPoint = CGPoint.zero
         var index = 0
 
-        let scaleX = rect.width / viewBoxWidth
-        let scaleY = rect.height / viewBoxHeight
+        let scaleX = rect.width / WWDC26SlabMetrics.viewBoxWidth
+        let scaleY = rect.height / WWDC26SlabMetrics.viewBoxHeight
 
         func map(_ point: CGPoint) -> CGPoint {
             CGPoint(

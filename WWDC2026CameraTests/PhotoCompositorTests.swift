@@ -72,6 +72,11 @@ struct WWDC26ObjectMetricsTests {
         #expect(withBase.width >= slabOnly.width)
     }
 
+    @Test("Base is wider than glass slab for centered mounting")
+    func baseIsWiderThanSlab() {
+        #expect(WWDC26ObjectMetrics.baseSize.width > WWDC26ObjectMetrics.slabSize.width)
+    }
+
     @Test("Base shape produces non-empty path")
     func baseShapeIsNonEmpty() {
         let rect = CGRect(origin: .zero, size: WWDC26ObjectMetrics.baseSize)
