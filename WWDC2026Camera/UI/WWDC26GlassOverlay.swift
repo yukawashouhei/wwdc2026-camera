@@ -39,13 +39,13 @@ struct WWDC26GlassOverlay: View {
     private var topBlackGradient: some View {
         LinearGradient(
             colors: [
-                .black.opacity(0.96),
-                .black.opacity(0.82),
-                .black.opacity(0.45),
+                .black.opacity(1.0),
+                .black.opacity(0.92),
+                .black.opacity(0.4),
                 .clear
             ],
             startPoint: .top,
-            endPoint: UnitPoint(x: 0.5, y: 0.5)
+            endPoint: UnitPoint(x: 0.5, y: 0.38)
         )
         .frame(width: slabWidth, height: slabHeight)
         .mask { glassBodyMask }

@@ -111,20 +111,9 @@ struct WWDC26BaseView: View {
     }
 
     private var topEdgeHighlights: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: WWDC26ObjectMetrics.trayCornerRadius, style: .continuous)
-                .strokeBorder(.white.opacity(0.20), lineWidth: 1)
-                .frame(
-                    width: size.width - WWDC26ObjectMetrics.trayHorizontalInset * 2,
-                    height: size.height * WWDC26ObjectMetrics.trayHeightRatio
-                )
-                .offset(y: -(size.height * 0.30))
-
-            RoundedRectangle(cornerRadius: WWDC26ObjectMetrics.baseCornerRadius, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 0.8)
-                .frame(width: size.width, height: size.height * WWDC26ObjectMetrics.lowerBodyHeightRatio)
-                .offset(y: 0)
-        }
+        RoundedRectangle(cornerRadius: WWDC26ObjectMetrics.baseCornerRadius, style: .continuous)
+            .strokeBorder(.white.opacity(0.12), lineWidth: 0.8)
+            .frame(width: size.width, height: size.height * WWDC26ObjectMetrics.lowerBodyHeightRatio)
     }
 }
 

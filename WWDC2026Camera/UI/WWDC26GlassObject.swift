@@ -8,6 +8,9 @@ struct WWDC26GlassObject: View {
         let unitSize = WWDC26ObjectMetrics.unitSize(showBase: showBase)
 
         ZStack(alignment: .top) {
+            Color.clear
+                .frame(width: unitSize.width, height: unitSize.height)
+
             if showBase {
                 WWDC26BaseView()
                     .offset(y: WWDC26ObjectMetrics.baseVerticalOffset)
